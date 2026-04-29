@@ -1,14 +1,14 @@
 [project]
-name = "example"
+name = "PNCC_tee_time"
 version = "0.1.0"
-description = "A small example project created from a template"
+description = "Project to automate getting a tee time on PNCC"
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [
     { name = "Bill Lueckenbach", email = "bill.lueckenbach@gmail.com" }
 ]
-keywords = ["example", "template"]
+keywords = ["PNCC", "tee time", "auto login"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "requests>=2.28",
+    "selenium>=4.0",
 ]
 
 [project.optional-dependencies]
