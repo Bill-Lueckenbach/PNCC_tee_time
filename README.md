@@ -7,30 +7,55 @@
 ```plaintext
 📁 PNCC_tee_time/
 ├── 📁 src/                          # Source code (importable modules)
-│   └── 📁 PNCC_tee_time             # Package directory 
-│       ├── 📄 PNCC_tee_time.py      # Module file 
-│       └── 📄 __init__.py           # Makes directory a package
+│   └── 📁 PNCC_tee_time/            # Package directory
+│       ├── 📄 __init__.py           # Makes directory a package
+│       ├── 📄 __main__.py           # Entry point: python -m PNCC_tee_time
+│       ├── 📄 automation.py         # CLI argument parsing + main workflow
+│       ├── 📄 base.py               # WebDriver setup / teardown helpers
+│       ├── 📄 elements.py           # Low-level element interaction helpers
+│       ├── 📄 locators.py           # CSS/XPath selectors and page URLs
+│       ├── 📄 pages.py              # Page-level actions (login, booking, etc.)
+│       └── 📄 settings.py           # Credentials and environment config
 ├── 📁 tests/                        # Pytest test suite
-│   └── 📄 test_PNCC_tee_time.py     # Unit Tests
+│   ├── 📄 test_automation.py        # Unit tests for automation.py
+│   ├── 📄 test_base.py              # Unit tests for base.py
+│   ├── 📄 test_integration.py       # Integration/smoke tests (live browser)
+│   └── 📄 test_settings.py          # Unit tests for settings.py
 ├── 📁 .vscode/                      # Editor settings (pytest, GitLens, docstrings)
 │   └── 📄 settings.json
-├── 📄 pyproject.toml                # Project metadata + pytest config
+├── 📄 .env                          # Credentials (not tracked by Git)
 ├── 📄 .gitignore                    # Files not tracked by GitHub
-├── 📄 PNCC_tee_time.code-workspace  #  
-└── 📄 README.md                     # This File
+├── 📄 pyproject.toml                # Project metadata + pytest config
+├── 📄 PNCC_tee_time.code-workspace  # VS Code workspace file
+└── 📄 README.md                     # This file
 
 ```
 
 
 
-This layout is intentionally GitLens‑friendly:
-- Clear separation of source code and tests
-- Predictable import paths
-- Clean commit history and file‑by‑file authorship
-- Ideal for template repositories and reproducible workflows
 
 ## 🚀 Getting Started
 
+
+## 🪵 Logging Configuration
+
+The app reads logging settings from environment variables in your `.env` file.
+
+```env
+# Global log level for all modules
+PNCC_LOG_LEVEL=INFO
+
+# Optional: write logs to a file
+PNCC_LOG_FILE=pncc.log
+
+# Optional: force DEBUG only for selected modules (comma-separated)
+PNCC_LOG_DEBUG_MODULES=PNCC_tee_time.pages,PNCC_tee_time.date_time_utils
+```
+
+How it works:
+1. `PNCC_LOG_LEVEL` sets the default level for the whole app.
+2. `PNCC_LOG_DEBUG_MODULES` overrides specific module loggers to `DEBUG`.
+3. This lets you keep most output at `INFO` while getting deep diagnostics for targeted modules.
 
 
 ## 🔧 Common Tasks
