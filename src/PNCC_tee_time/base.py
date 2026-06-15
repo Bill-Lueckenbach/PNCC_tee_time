@@ -4,6 +4,10 @@ This module is responsible for initialising the browser driver and providing
 low-level utility functions that every other module in the package depends on.
 
 Functions in this module:
+    - _move_window_to_right_monitor(driver)
+        Best-effort Windows-only helper that moves the browser window to a
+        secondary monitor and maximizes it when multiple monitors are present.
+
     - create_driver(headless=False, page_load_timeout=30)
         Creates and returns a configured Chrome WebDriver instance with
         standard options (maximised window, notifications disabled), optional
@@ -21,10 +25,36 @@ All functions here should be stateless or accept the driver as a parameter
 so they remain easy to test and reuse.
 """
 
+import ctypes
+import sys
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.remote.webdriver import WebDriver
+
+
+def _move_window_to_right_monitor(driver: WebDriver) -> None:
+    """Move and maximize the browser on the right monitor when available.
+
+    This is a best-effort Windows-only helper. If monitor detection fails,
+    it silently falls back to default browser placement.
+    """
+    if sys.platform != "win32":
+        return
+
+    try:
+        user32 = ctypes.windll.user32
+        monitor_count = user32.GetSystemMetrics(80)  # SM_CMONITORS
+        if monitor_count < 2:
+            return
+
+        primary_width = user32.GetSystemMetrics(0)  # SM_CXSCREEN
+        driver.set_window_position(primary_width, 0)
+        driver.maximize_window()
+    except Exception:
+        # Keep driver setup resilient if monitor APIs are unavailable.
+        return
 
 
 def create_driver(*, headless: bool = False, page_load_timeout: int = 30) -> WebDriver:
@@ -59,6 +89,8 @@ def create_driver(*, headless: bool = False, page_load_timeout: int = 30) -> Web
 
     driver = webdriver.Chrome(service=Service(), options=options)
     driver.set_page_load_timeout(page_load_timeout)
+    if not headless:
+        _move_window_to_right_monitor(driver)
     return driver
 
 

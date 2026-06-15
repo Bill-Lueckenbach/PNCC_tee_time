@@ -4,6 +4,7 @@ These tests cover environment loading and required-variable validation
 without launching a browser.
 """
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -71,7 +72,7 @@ def test_get_credentials_loads_dotenv_and_returns_tuple(
         "from the required environment lookups."
     )
 
-    mock_load_dotenv.assert_called_once_with()
+    mock_load_dotenv.assert_called_once_with(override=False)
     assert mock_get_required_env.call_args_list == [
         (("PNCC_USERNAME",),),
         (("PNCC_PASSWORD",),),
@@ -99,7 +100,7 @@ def test_get_credentials_propagates_username_lookup_failure(
     ):
         settings.get_credentials()
 
-    mock_load_dotenv.assert_called_once_with()
+    mock_load_dotenv.assert_called_once_with(override=False)
     mock_get_required_env.assert_called_once_with("PNCC_USERNAME")
 
 
@@ -119,6 +120,7 @@ def test_setup_logging_uses_info_level_when_env_missing(
     assert kwargs["level"] == settings.logging.INFO
     assert kwargs["force"] is True
     assert len(kwargs["handlers"]) == 1
+    assert isinstance(kwargs["handlers"][0].formatter, settings.IndentingFormatter)
 
 
 @patch("PNCC_tee_time.settings.logging.FileHandler")
@@ -139,9 +141,52 @@ def test_setup_logging_adds_file_handler_when_env_set(
 
     # Assert
     mock_file_handler.assert_called_once_with("pncc.log")
+    assert mock_file_handler.return_value.setFormatter.called
     kwargs = mock_basic_config.call_args.kwargs
     assert kwargs["level"] == settings.logging.DEBUG
     assert len(kwargs["handlers"]) == 2
+
+
+@patch("PNCC_tee_time.settings.logging.basicConfig")
+@patch("PNCC_tee_time.settings.os.getenv")
+def test_setup_logging_uses_warning_level_when_configured(
+    mock_getenv, mock_basic_config
+):
+    # Arrange
+    values = {
+        "PNCC_LOG_LEVEL": "WARNING",
+        "PNCC_LOG_FILE": "",
+        "PNCC_LOG_DEBUG_MODULES": "",
+    }
+    mock_getenv.side_effect = lambda name, default=None: values.get(name, default)
+
+    # Act
+    settings.setup_logging()
+
+    # Assert
+    kwargs = mock_basic_config.call_args.kwargs
+    assert kwargs["level"] == settings.logging.WARNING
+
+
+@patch("PNCC_tee_time.settings.logging.basicConfig")
+@patch("PNCC_tee_time.settings.os.getenv")
+def test_setup_logging_defaults_to_info_on_invalid_level(
+    mock_getenv, mock_basic_config
+):
+    # Arrange
+    values = {
+        "PNCC_LOG_LEVEL": "INVALID",
+        "PNCC_LOG_FILE": "",
+        "PNCC_LOG_DEBUG_MODULES": "",
+    }
+    mock_getenv.side_effect = lambda name, default=None: values.get(name, default)
+
+    # Act
+    settings.setup_logging()
+
+    # Assert
+    kwargs = mock_basic_config.call_args.kwargs
+    assert kwargs["level"] == settings.logging.INFO
 
 
 @patch("PNCC_tee_time.settings.logging.getLogger")
@@ -220,3 +265,88 @@ def test_get_runtime_config_filters_empty_entries(mock_get_required_env):
 
     # Assert
     assert result == ["9:00 AM", "10:00 AM"]
+
+
+def test_indenting_formatter_indents_multiline_messages():
+    formatter = settings.IndentingFormatter(
+        "%(asctime)s %(levelname)s [%(name)s.%(funcName)s] %(message)s"
+    )
+    record = logging.LogRecord(
+        name="PNCC_tee_time.pages",
+        level=logging.DEBUG,
+        pathname=__file__,
+        lineno=1,
+        msg="first line\nsecond line\nthird line",
+        args=(),
+        exc_info=None,
+    )
+    record.funcName = "test_indenting_formatter_indents_multiline_messages"
+
+    formatted = formatter.format(record)
+
+    assert formatted.startswith(
+        "2026-"
+    )
+    assert (
+        "[PNCC_tee_time.pages.test_indenting_formatter_indents_multiline_messages]"
+        in formatted
+    )
+    assert "\r\n    first line" in formatted
+    assert "\r\n    second line" in formatted
+    assert "\r\n    third line" in formatted
+
+
+def test_indenting_formatter_wraps_long_messages_at_word_breaks():
+    formatter = settings.IndentingFormatter(
+        "%(asctime)s %(levelname)s [%(name)s.%(funcName)s] %(message)s"
+    )
+    record = logging.LogRecord(
+        name="PNCC_tee_time.pages",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg=(
+            "This log message is intentionally long so that it should wrap at a "
+            "word boundary instead of splitting a word in the middle."
+        ),
+        args=(),
+        exc_info=None,
+    )
+    record.funcName = (
+        "test_indenting_formatter_wraps_long_messages_at_word_breaks"
+    )
+
+    formatted = formatter.format(record)
+
+    lines = formatted.splitlines()
+    assert lines[1] == (
+        "    This log message is intentionally long so that it should wrap at a "
+        "word boundary"
+    )
+    assert lines[2] == "    instead of splitting a word in the middle."
+
+
+@patch("PNCC_tee_time.settings.get_required_env")
+def test_get_runtime_config_single_tee_time(mock_get_required_env):
+    # Arrange
+    mock_get_required_env.return_value = "8:00 AM"
+
+    # Act
+    result = settings.get_runtime_config()
+
+    # Assert
+    assert result == ["8:00 AM"]
+
+
+@patch("PNCC_tee_time.settings.get_required_env")
+def test_get_runtime_config_many_tee_times(mock_get_required_env):
+    # Arrange
+    tee_times = ", ".join([f"{hour}:00 AM" for hour in range(8, 17)])
+    mock_get_required_env.return_value = tee_times
+
+    # Act
+    result = settings.get_runtime_config()
+
+    # Assert
+    assert len(result) == 9
+    assert result[0] == "8:00 AM"

@@ -123,6 +123,66 @@ def test_create_driver_always_adds_standard_arguments(mock_service, mock_chrome)
         )
 
 
+@patch("PNCC_tee_time.base.webdriver.Chrome")
+@patch("PNCC_tee_time.base.Service")
+def test_create_driver_moves_to_right_monitor_on_windows_dual_display(
+    mock_service, mock_chrome
+):
+    # Arrange
+    mock_driver = MagicMock()
+    mock_chrome.return_value = mock_driver
+
+    with patch("PNCC_tee_time.base.sys.platform", "win32"):
+        with patch("PNCC_tee_time.base.ctypes") as mock_ctypes:
+            user32 = mock_ctypes.windll.user32
+
+            def _metrics(index):
+                if index == 80:  # SM_CMONITORS
+                    return 2
+                if index == 0:  # SM_CXSCREEN
+                    return 1920
+                return 0
+
+            user32.GetSystemMetrics.side_effect = _metrics
+
+            # Act
+            base.create_driver()
+
+    # Assert
+    mock_driver.set_window_position.assert_called_once_with(1920, 0)
+    mock_driver.maximize_window.assert_called_once()
+
+
+@patch("PNCC_tee_time.base.webdriver.Chrome")
+@patch("PNCC_tee_time.base.Service")
+def test_create_driver_does_not_move_window_on_single_display(
+    mock_service, mock_chrome
+):
+    # Arrange
+    mock_driver = MagicMock()
+    mock_chrome.return_value = mock_driver
+
+    with patch("PNCC_tee_time.base.sys.platform", "win32"):
+        with patch("PNCC_tee_time.base.ctypes") as mock_ctypes:
+            user32 = mock_ctypes.windll.user32
+
+            def _metrics(index):
+                if index == 80:  # SM_CMONITORS
+                    return 1
+                if index == 0:  # SM_CXSCREEN
+                    return 1920
+                return 0
+
+            user32.GetSystemMetrics.side_effect = _metrics
+
+            # Act
+            base.create_driver()
+
+    # Assert
+    mock_driver.set_window_position.assert_not_called()
+    mock_driver.maximize_window.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # open_page
 # ---------------------------------------------------------------------------

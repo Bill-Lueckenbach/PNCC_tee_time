@@ -7,8 +7,56 @@ environment and validating that required settings are present.
 
 import logging
 import os
+import textwrap
 
 from dotenv import load_dotenv
+
+
+class IndentingFormatter(logging.Formatter):
+    """Formatter that indents continuation lines in multiline log records."""
+
+    _message_width = 80
+
+    def format(self, record: logging.LogRecord) -> str:
+        message = record.getMessage()
+        message_lines = message.splitlines() or [""]
+        wrapped_lines: list[str] = []
+        for message_line in message_lines:
+            wrapped_lines.extend(
+                textwrap.wrap(
+                    message_line,
+                    width=self._message_width,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [""]
+            )
+
+        header_record = logging.makeLogRecord(record.__dict__.copy())
+        header_record.msg = ""
+        header_record.args = ()
+        header_record.exc_info = None
+        header = super().format(header_record).rstrip()
+
+        indented_message = "\r\n    ".join(wrapped_lines)
+        return f"{header}\r\n    {indented_message}"
+
+
+class ModuleDebugOnlyFilter(logging.Filter):
+    """Allow only DEBUG records from selected logger names/prefixes."""
+
+    def __init__(self, module_names: list[str]):
+        super().__init__()
+        self._module_names = module_names
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno != logging.DEBUG:
+            return False
+
+        for module_name in self._module_names:
+            if record.name == module_name or record.name.startswith(f"{module_name}."):
+                return True
+        return False
 
 
 def setup_logging() -> None:
@@ -20,30 +68,53 @@ def setup_logging() -> None:
         PNCC_LOG_DEBUG_MODULES: Optional comma-separated logger names to force
             to DEBUG level (e.g. "PNCC_tee_time.pages,PNCC_tee_time.base").
     """
+    # Load .env before reading logging-related environment variables so
+    # DEBUG/handler configuration can be driven from local project settings.
+    # Use override=True to avoid stale terminal-session PNCC_LOG_* values.
+    load_dotenv(override=True)
+
     level_name = os.getenv("PNCC_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     if not isinstance(level, int):
         level = logging.INFO
 
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    module_list_raw = os.getenv("PNCC_LOG_DEBUG_MODULES", "")
+    debug_modules = [
+        module_name.strip()
+        for module_name in module_list_raw.split(",")
+        if module_name.strip()
+    ]
+
+    stream_handler = logging.StreamHandler()
+    # Keep terminal output at INFO+ so module-level DEBUG diagnostics can be
+    # routed to file without flooding the console.
+    stream_handler.setLevel(logging.INFO)
+
+    handlers: list[logging.Handler] = [stream_handler]
     log_file = os.getenv("PNCC_LOG_FILE", "").strip()
     if log_file:
-        handlers.append(logging.FileHandler(log_file))
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        if debug_modules:
+            file_handler.addFilter(ModuleDebugOnlyFilter(debug_modules))
+        handlers.append(file_handler)
+
+    formatter = IndentingFormatter(
+        "%(asctime)s %(levelname)s [%(name)s.%(funcName)s] %(message)s"
+    )
+    for handler in handlers:
+        handler.setFormatter(formatter)
 
     logging.basicConfig(
         level=level,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
         handlers=handlers,
         force=True,
     )
 
     # Allow selective deep diagnostics while keeping the global log level
     # higher (for example, global INFO with only pages.py at DEBUG).
-    module_list_raw = os.getenv("PNCC_LOG_DEBUG_MODULES", "")
-    for module_name in module_list_raw.split(","):
-        module_name = module_name.strip()
-        if module_name:
-            logging.getLogger(module_name).setLevel(logging.DEBUG)
+    for module_name in debug_modules:
+        logging.getLogger(module_name).setLevel(logging.DEBUG)
 
 
 def get_required_env(name: str) -> str:
@@ -92,7 +163,7 @@ def get_credentials() -> tuple[str, str]:
     Raises:
         RuntimeError: If PNCC_USERNAME or PNCC_PASSWORD is not set.
     """
-    load_dotenv()
+    load_dotenv(override=False)
     username = get_required_env("PNCC_USERNAME")
     password = get_required_env("PNCC_PASSWORD")
     return username, password
